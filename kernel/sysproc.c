@@ -81,7 +81,11 @@ int
 sys_pgaccess(void)
 {
   // lab pgtbl: your code here.
-  return 0;
+  uint64 va, ua;//virtual address,user address to store
+  int num;      // number of pages
+  if (argaddr(0, &va) < 0 || argint(1, &num) < 0 || argaddr(2, &ua) < 0)
+    return -1;
+  return pgaccess(myproc()->pagetable, va, num, ua);
 }
 #endif
 

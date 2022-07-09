@@ -432,3 +432,54 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+// recursive print
+void
+walkprint(pagetable_t pgtbl, int dep)
+{
+  for (int i = 0; i < PGSIZE / sizeof(pte_t); i++)
+  {
+    if (pgtbl[i] & PTE_V)
+    {
+      printf("..");
+      for (int i = 0; i < dep; i++)
+        printf(" ..");
+      printf("%d: pte %p pa %p\n", i, pgtbl[i], PTE2PA(pgtbl[i]));
+      if (!(pgtbl[i] & (PTE_R | PTE_W | PTE_X)))
+        walkprint((pagetable_t)PTE2PA(pgtbl[i]), dep + 1);
+    }
+  }
+}
+
+// print pagetable
+void
+vmprint(pagetable_t pgtbl)
+{
+  printf("page table %p\n", pgtbl);
+  walkprint(pgtbl, 0);
+}
+
+//information about which pages have been accessed (read or write)
+int
+pgaccess(pagetable_t pgtbl,uint64 va,int num, uint64 ua)
+{
+  uint64 result = 0;
+  for (uint i = 0; i < num; i++)
+  {
+    pte_t *pte = walk(pgtbl, va, 0);
+    if (!pte)
+    {
+      panic("pgaccess:invalid virtual address.\n");
+      return -1;
+    }
+    if (*pte & PTE_A)
+    {
+      result |= 1 << i;
+      *pte &= ~PTE_A;
+    }
+    va += PGSIZE;
+  }
+  copyout(pgtbl, ua, (char *)&result, sizeof(result));
+
+  return 0;
+}
