@@ -141,6 +141,10 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  //alarm module
+  p->handler = 0;
+  p->interval = p->elaped = p->enable = 0;
+
   return p;
 }
 
@@ -164,6 +168,10 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+
+  //alarm module
+  p->handler = 0;
+  p->interval = p->elaped = p->enable = 0;
 }
 
 // Create a user page table for a given process,

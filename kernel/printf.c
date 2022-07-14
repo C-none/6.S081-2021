@@ -132,3 +132,15 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+void
+backtrace(void)
+{
+  printf("backtrace:\n");
+  uint64 fp = r_fp();
+  while (fp!=PGROUNDUP(fp))
+  {
+    printf("%p\n", *(uint64 *)(fp - 8));//将指针指向当前函数的fp，再取值
+    fp = *(uint64 *)(fp - 16);//将fp转化为地址，取调用函数的fp
+  }
+}
