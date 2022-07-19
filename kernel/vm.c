@@ -303,7 +303,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -312,13 +312,17 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    *pte = (*pte | PTE_COW) & (~PTE_W);
+    // if((mem = kalloc()) == 0)
+    //   goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+    if (mappages(new, i, PGSIZE, (uint64)pa, PTE_FLAGS(*pte)) != 0)
+    { //复原标记
+      *pte = (*pte & (~0x3ff)) | flags;
+      // kfree(mem);
       goto err;
     }
+    kincref((void*)pa);
   }
   return 0;
 
@@ -339,7 +343,7 @@ uvmclear(pagetable_t pagetable, uint64 va)
     panic("uvmclear");
   *pte &= ~PTE_U;
 }
-
+ 
 // Copy from kernel to user.
 // Copy len bytes from src to virtual address dstva in a given page table.
 // Return 0 on success, -1 on error.
@@ -350,9 +354,28 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
+
+    pte_t *pte;
+    uint64 flags,*mem;
+
+    if ((pte = walk(pagetable, va0, 0)) == 0 || (*pte & PTE_V) == 0)
       return -1;
+
+    
+    if (*pte & PTE_COW)
+    {
+      pa0 = PTE2PA(*pte);
+      flags = (PTE_FLAGS(*pte) & (~PTE_COW)) | PTE_W;
+
+      if ((mem = kalloc()) == 0)
+        return -1;
+
+      memmove(mem, (void *)pa0, PGSIZE);
+      kfree((void *)pa0);
+      *pte = PA2PTE((uint64)mem) | flags;
+    }
+
+    pa0 = PTE2PA(*pte);
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
