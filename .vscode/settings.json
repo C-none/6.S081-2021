@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "param.h": "c",
+        "types.h": "c",
+        "tuple": "c",
+        "atomic": "c",
+        "*.tcc": "c",
+        "fstream": "c",
+        "sstream": "c"
+    }
+}
