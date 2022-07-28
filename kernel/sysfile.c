@@ -316,6 +316,39 @@ sys_open(void)
     }
   }
 
+//判断如果这个文件的类型是符号链接
+  if(ip->type == T_SYMLINK && !(omode & O_NOFOLLOW))
+  {
+    char target[MAXPATH];
+    const int maxdep=10;
+    for(int dep = 0; dep < maxdep; dep++)
+    {
+      //读取文件
+      if(readi(ip, 0, (uint64)target, 0, MAXPATH) != MAXPATH)
+      {
+        iunlockput(ip);
+        end_op();
+        return -1;
+      }
+      iunlockput(ip);
+
+      //target指向的文件不存在
+      if((ip = namei(target)) == 0)
+      {
+        end_op();
+        return -1;
+      }
+      
+      ilock(ip);
+      if(ip->type!=T_SYMLINK)//得到的目标文件不再是符号链接，停止循环
+        goto contin;
+    }
+    iunlockput(ip);
+        end_op();
+        return -1; 
+  }
+  contin:
+
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
     iunlockput(ip);
     end_op();
@@ -482,5 +515,36 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  struct inode *ip;
+
+  if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0){
+    return -1;
+  }
+
+  begin_op();
+
+  if((ip = create(path, T_SYMLINK, 0, 0)) == 0)
+  {
+    end_op();
+    return -1;
+  }
+  
+  //写入连接文件的地址
+  if(writei(ip, 0, (uint64)target, 0, MAXPATH) != MAXPATH)
+  {
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+
+  iunlockput(ip);
+  end_op();
   return 0;
 }
