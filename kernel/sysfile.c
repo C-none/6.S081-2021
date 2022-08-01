@@ -484,3 +484,61 @@ sys_pipe(void)
   }
   return 0;
 }
+
+uint64
+sys_mmap(void) {
+    uint64 addr, length, offset;
+    int prot, flags, fd;
+
+    struct file *file;
+    struct proc *p = myproc();
+
+    if(argaddr(0, &addr) || argaddr(1, &length) || argint(2, &prot)
+    || argint(3, &flags) || argfd(4, &fd, &file) || argaddr(5, &offset))
+        return -1;
+
+    if(!file->writable)
+        if(flags==MAP_SHARED && (prot&PROT_WRITE))
+            return -1;
+
+    for(int i = 0; i<NVMA; ++i) {
+        if(!p->vmas[i].length) {//找到空的
+            p->vmas[i].addr = p->sz;
+            p->vmas[i].length = length;
+            p->vmas[i].prot  = prot;
+            p->vmas[i].flags = flags;
+            p->vmas[i].file = filedup(file);
+            p->sz += length;
+
+            return p->vmas[i].addr;
+        }
+    }
+
+    panic("no free VMA");
+}
+
+uint64
+sys_munmap(void)
+{
+  struct proc *p = myproc();
+  uint64 addr, length;
+
+  if (argaddr(0, &addr) || argaddr(1, &length))
+    return -1;
+
+  for (int i = 0; i < NVMA; ++i)
+  {//找到需要解除的
+    if (p->vmas[i].addr == addr)
+    {
+      p->vmas[i].addr += length;
+      p->vmas[i].length -= length;
+      if (p->vmas[i].flags == MAP_SHARED)//写回
+        filewrite(p->vmas[i].file, addr, length);
+      uvmunmap(p->pagetable, addr, length / PGSIZE, 1);
+      if (!p->vmas[i].length)//全部取消完了
+        fileclose(p->vmas[i].file);
+      return 0;
+    }
+  }
+  return -1;
+}

@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
+#include "fcntl.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -67,12 +71,58 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  }else if(r_scause() == 13 || r_scause() == 15){//如果写错误
+    uint64 va = r_stval();
+    struct VMA *vma = 0;
+
+    for(int i = 0; i<NVMA; ++i) {
+        if(p->vmas[i].addr <= va
+        && va < p->vmas[i].addr+p->vmas[i].length) {
+            vma = &(p->vmas[i]);
+            break;
+        }
+    }
+
+    if (!vma)
+      p->killed = 1;
+    else
+    {
+      uint64 offset = va - vma->addr;
+      uint64 pa = (uint64)kalloc();
+      //分配空间
+      if (pa)
+      {
+        int flags = PTE_U;
+
+        memset((void *)pa, 0, PGSIZE);
+        //读入
+        ilock(vma->file->ip);
+        readi(vma->file->ip, 0, pa, offset, PGSIZE);
+        iunlock(vma->file->ip);
+
+        if (vma->prot & PROT_READ)
+          flags |= PTE_R;
+        if (vma->prot & PROT_WRITE)
+          flags |= PTE_W;
+        if (vma->prot & PROT_EXEC)
+          flags |= PTE_X;
+        //映射虚拟内存
+        if (mappages(p->pagetable, va, PGSIZE, pa, flags))
+        {
+          kfree((void *)pa);
+          p->killed = 1;
+        }
+      }
+      else
+        p->killed = 1;
+    }
+  }
+  else
+  {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
-
   if(p->killed)
     exit(-1);
 
